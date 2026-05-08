@@ -29,13 +29,13 @@ PDF / 图片
 → Markdown / JSON 输出
 → 文档问答与证据定位
 → Web 可视化展示
+```
 
-
-对比方案
+# 对比方案
 OCR-only：仅使用 OCR/版面解析结果进行结构化与问答。
 VLM-only：直接将页面图像输入视觉语言模型进行理解。
 Hybrid：结合 OCR 的文本与坐标信息，以及 VLM 的视觉语义理解能力。
-当前进度
+# 当前进度
  项目选题与技术路线确定
  PDF 转页面图片
  OCR/版面解析
@@ -44,7 +44,7 @@ Hybrid：结合 OCR 的文本与坐标信息，以及 VLM 的视觉语义理解�
  混合式解析流程
  Gradio Demo
  对比实验与报告整理
-项目结构
+# 项目结构
 document-vlm-practice/
 ├── README.md
 ├── requirements.txt
@@ -54,6 +54,6 @@ document-vlm-practice/
 ├── outputs/
 ├── examples/
 └── docs/
-说明
+# 说明
 
 本项目为专业实践项目，重点在于系统实现、流程对比与案例分析，不追求大规模模型训练或严格 benchmark。
