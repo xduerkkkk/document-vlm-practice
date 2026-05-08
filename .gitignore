@@ -26,3 +26,5 @@ outputs/
 
 # Env
 .env
+
+models/
