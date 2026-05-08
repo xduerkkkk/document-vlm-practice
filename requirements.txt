@@ -1,0 +1,9 @@
+pymupdf
+pillow
+opencv-python
+numpy
+pandas
+gradio
+python-dotenv
+requests
+tqdm
