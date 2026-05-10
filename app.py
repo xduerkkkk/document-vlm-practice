@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import traceback
 from pathlib import Path
 from typing import Any, Dict, Tuple, List, Optional
-import traceback
+
 import gradio as gr
 
 from src.pdf_utils import load_document_as_images
+from src.vlm_utils import DEFAULT_VLM_PROMPT
 
 
 def process_upload(
@@ -15,6 +17,9 @@ def process_upload(
     enable_ocr: bool,
     ocr_max_pages: int,
     ocr_lang: str,
+    enable_vlm: bool,
+    vlm_max_pages: int,
+    vlm_prompt: str,
 ) -> Tuple[
     List[str],
     str,
@@ -23,12 +28,15 @@ def process_upload(
     str,
     Optional[str],
     Optional[str],
+    str,
+    Optional[str],
+    Optional[str],
 ]:
     """
     Gradio 上传文件后的处理函数。
     """
     if file_path is None:
-        return [], "请先上传一个 PDF 或图片文件。", {}, [], "", None, None
+        return [], "请先上传一个 PDF 或图片文件。", {}, [], "", None, None, "", None, None
 
     try:
         result = load_document_as_images(
@@ -51,6 +59,10 @@ def process_upload(
         ocr_text = ""
         ocr_json_file: Optional[str] = None
         ocr_md_file: Optional[str] = None
+
+        vlm_text = ""
+        vlm_json_file: Optional[str] = None
+        vlm_md_file: Optional[str] = None
 
         if enable_ocr:
             from src.ocr_utils import run_ocr_on_pages
@@ -96,7 +108,7 @@ def process_upload(
 
             total_items = sum(len(page["ocr_items"]) for page in ocr_results)
             status += (
-                f"\nOCR 处理成功。\n"
+                f"\nOCR-only 处理成功。\n"
                 f"OCR 页数：{len(ocr_results)}\n"
                 f"识别文本块数量：{total_items}\n"
                 f"OCR JSON：{ocr_json_file}\n"
@@ -106,6 +118,39 @@ def process_upload(
         else:
             status += "\n未启用 OCR。"
 
+        if enable_vlm:
+            from src.vlm_utils import run_vlm_on_pages, format_vlm_markdown
+            from src.export_utils import save_vlm_outputs
+
+            vlm_results = run_vlm_on_pages(
+                page_images=page_images,
+                max_pages=vlm_max_pages,
+                prompt=vlm_prompt.strip() or DEFAULT_VLM_PROMPT,
+            )
+
+            vlm_text = format_vlm_markdown(vlm_results)
+
+            result["vlm_results"] = vlm_results
+
+            saved_vlm_files = save_vlm_outputs(
+                run_dir=result["run_dir"],
+                result=result,
+                vlm_markdown=vlm_text,
+            )
+
+            vlm_json_file = saved_vlm_files["vlm_json_path"]
+            vlm_md_file = saved_vlm_files["vlm_md_path"]
+
+            status += (
+                f"\nVLM-only 处理成功。\n"
+                f"VLM 页数：{len(vlm_results)}\n"
+                f"VLM JSON：{vlm_json_file}\n"
+                f"VLM Markdown：{vlm_md_file}\n"
+            )
+
+        else:
+            status += "\n未启用 VLM。"
+
         return (
             page_images,
             status,
@@ -114,12 +159,15 @@ def process_upload(
             ocr_text,
             ocr_json_file,
             ocr_md_file,
+            vlm_text,
+            vlm_json_file,
+            vlm_md_file,
         )
 
     except Exception as e:
         tb = traceback.format_exc()
         error_message = f"处理失败：{repr(e)}\n\n详细堆栈：\n{tb}"
-        return [], error_message, {}, [], "", None, None
+        return [], error_message, {}, [], "", None, None, "", None, None
 
 
 def build_demo() -> gr.Blocks:
@@ -128,14 +176,14 @@ def build_demo() -> gr.Blocks:
             """
             # 面向复杂文档解析的 OCR 与 VLM 协同实践
 
-            当前版本：**文档输入 + 页面图像化 + OCR-only 基线**
+            当前版本：**文档输入 + OCR-only + VLM-only**
 
             功能：
             - 上传 PDF 或图片；
             - 将 PDF 页面渲染成 PNG；
-            - 使用 PaddleOCR 做基础 OCR；
-            - 展示 OCR 文字框、文本、坐标和置信度；
-            - 保存 OCR-only 的 JSON 与 Markdown 结果。
+            - 使用 PaddleOCR 做 OCR-only；
+            - 调用视觉语言模型做 VLM-only 页面理解；
+            - 保存 OCR/VLM 的 JSON 与 Markdown 结果。
             """
         )
 
@@ -158,10 +206,12 @@ def build_demo() -> gr.Blocks:
                 max_pages_input = gr.Slider(
                     minimum=1,
                     maximum=30,
-                    value=10,
+                    value=5,
                     step=1,
                     label="最多转成页面图的页数",
                 )
+
+                gr.Markdown("## OCR-only 设置")
 
                 enable_ocr_input = gr.Checkbox(
                     value=True,
@@ -171,7 +221,7 @@ def build_demo() -> gr.Blocks:
                 ocr_max_pages_input = gr.Slider(
                     minimum=1,
                     maximum=10,
-                    value=3,
+                    value=2,
                     step=1,
                     label="最多 OCR 页数",
                 )
@@ -182,11 +232,32 @@ def build_demo() -> gr.Blocks:
                     label="OCR 语言",
                 )
 
+                gr.Markdown("## VLM-only 设置")
+
+                enable_vlm_input = gr.Checkbox(
+                    value=False,
+                    label="启用 VLM-only 页面理解",
+                )
+
+                vlm_max_pages_input = gr.Slider(
+                    minimum=1,
+                    maximum=5,
+                    value=1,
+                    step=1,
+                    label="最多 VLM 页数",
+                )
+
+                vlm_prompt_input = gr.Textbox(
+                    label="VLM Prompt",
+                    value=DEFAULT_VLM_PROMPT,
+                    lines=10,
+                )
+
                 run_button = gr.Button("开始处理", variant="primary")
 
                 status_output = gr.Textbox(
                     label="处理状态",
-                    lines=10,
+                    lines=14,
                 )
 
                 gr.Markdown("### 下载 OCR-only 结果")
@@ -197,6 +268,16 @@ def build_demo() -> gr.Blocks:
 
                 ocr_md_download = gr.File(
                     label="下载 ocr_text.md"
+                )
+
+                gr.Markdown("### 下载 VLM-only 结果")
+
+                vlm_json_download = gr.File(
+                    label="下载 vlm_results.json"
+                )
+
+                vlm_md_download = gr.File(
+                    label="下载 vlm_text.md"
                 )
 
             with gr.Column(scale=2):
@@ -221,6 +302,11 @@ def build_demo() -> gr.Blocks:
                         label="OCR 文本结果"
                     )
 
+                with gr.Tab("VLM 文本"):
+                    vlm_text_output = gr.Markdown(
+                        label="VLM 页面理解结果"
+                    )
+
                 with gr.Tab("JSON"):
                     json_output = gr.JSON(
                         label="处理结果 JSON",
@@ -235,6 +321,9 @@ def build_demo() -> gr.Blocks:
                 enable_ocr_input,
                 ocr_max_pages_input,
                 ocr_lang_input,
+                enable_vlm_input,
+                vlm_max_pages_input,
+                vlm_prompt_input,
             ],
             outputs=[
                 gallery_output,
@@ -244,6 +333,9 @@ def build_demo() -> gr.Blocks:
                 ocr_text_output,
                 ocr_json_download,
                 ocr_md_download,
+                vlm_text_output,
+                vlm_json_download,
+                vlm_md_download,
             ],
         )
 

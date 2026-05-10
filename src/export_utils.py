@@ -64,3 +64,37 @@ def save_ocr_outputs(
         "ocr_json_path": str(ocr_json_path),
         "ocr_md_path": str(ocr_md_path),
     }
+
+
+def save_vlm_outputs(
+    run_dir: str | Path,
+    result: Dict[str, Any],
+    vlm_markdown: str,
+) -> Dict[str, str]:
+    """
+    保存 VLM-only 结果。
+
+    输出：
+        vlm_results.json
+        vlm_text.md
+    """
+    run_dir = Path(run_dir)
+
+    vlm_json_path = run_dir / "vlm_results.json"
+    vlm_md_path = run_dir / "vlm_text.md"
+
+    vlm_data = {
+        "input_path": result.get("input_path"),
+        "file_type": result.get("file_type"),
+        "page_count": result.get("page_count"),
+        "page_images": result.get("page_images"),
+        "vlm_results": result.get("vlm_results", []),
+    }
+
+    save_json(vlm_data, vlm_json_path)
+    save_text(vlm_markdown, vlm_md_path)
+
+    return {
+        "vlm_json_path": str(vlm_json_path),
+        "vlm_md_path": str(vlm_md_path),
+    }
