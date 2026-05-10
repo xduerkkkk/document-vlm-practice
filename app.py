@@ -20,6 +20,11 @@ def process_upload(
     enable_vlm: bool,
     vlm_max_pages: int,
     vlm_prompt: str,
+    enable_hybrid: bool,
+    hybrid_max_pages: int,
+    enable_qa: bool,
+    qa_question: str,
+    qa_max_pages: int,
 ) -> Tuple[
     List[str],
     str,
@@ -31,12 +36,37 @@ def process_upload(
     str,
     Optional[str],
     Optional[str],
+    str,
+    Optional[str],
+    Optional[str],
+    str,
+    List[str],
+    Optional[str],
+    Optional[str],
 ]:
     """
     Gradio 上传文件后的处理函数。
     """
+    # 修复了 empty_return 的长度，补齐最后 4 个 QA 相关的空值，凑齐 17 个返回值
+    empty_return = ([],
+        "请先上传一个 PDF 或图片文件。",
+        {},[],
+        "",
+        None,
+        None,
+        "",
+        None,
+        None,
+        "",
+        None,
+        None,
+        "",[],
+        None,
+        None,
+    )
+
     if file_path is None:
-        return [], "请先上传一个 PDF 或图片文件。", {}, [], "", None, None, "", None, None
+        return empty_return
 
     try:
         result = load_document_as_images(
@@ -55,15 +85,27 @@ def process_upload(
             f"输出目录：{result['run_dir']}\n"
         )
 
-        ocr_visuals: List[str] = []
+        ocr_visuals: List[str] =[]
         ocr_text = ""
         ocr_json_file: Optional[str] = None
         ocr_md_file: Optional[str] = None
+        ocr_results: List[Dict[str, Any]] =[]
 
         vlm_text = ""
         vlm_json_file: Optional[str] = None
         vlm_md_file: Optional[str] = None
+        vlm_results: List[Dict[str, Any]] =[]
 
+        hybrid_text = ""
+        hybrid_json_file: Optional[str] = None
+        hybrid_md_file: Optional[str] = None
+        
+        qa_text = ""
+        qa_visuals: List[str] = []
+        qa_json_file: Optional[str] = None
+        qa_md_file: Optional[str] = None
+
+        # ==================== OCR 流程 ====================
         if enable_ocr:
             from src.ocr_utils import run_ocr_on_pages
             from src.visualize import draw_ocr_items, format_ocr_text
@@ -118,6 +160,7 @@ def process_upload(
         else:
             status += "\n未启用 OCR。"
 
+        # ==================== VLM 流程 ====================
         if enable_vlm:
             from src.vlm_utils import run_vlm_on_pages, format_vlm_markdown
             from src.export_utils import save_vlm_outputs
@@ -151,6 +194,105 @@ def process_upload(
         else:
             status += "\n未启用 VLM。"
 
+        # ==================== Hybrid 流程 ====================
+        if enable_hybrid:
+            if not enable_ocr or not enable_vlm:
+                status += "\nHybrid 未执行：当前版本要求同时启用 OCR-only 和 VLM-only。"
+            else:
+                from src.hybrid_utils import run_hybrid_on_pages, format_hybrid_markdown
+                from src.export_utils import save_hybrid_outputs
+
+                hybrid_results = run_hybrid_on_pages(
+                    ocr_results=ocr_results,
+                    vlm_results=vlm_results,
+                    max_pages=hybrid_max_pages,
+                )
+
+                hybrid_text = format_hybrid_markdown(hybrid_results)
+
+                result["hybrid_results"] = hybrid_results
+
+                saved_hybrid_files = save_hybrid_outputs(
+                    run_dir=result["run_dir"],
+                    result=result,
+                    hybrid_markdown=hybrid_text,
+                )
+
+                hybrid_json_file = saved_hybrid_files["hybrid_json_path"]
+                hybrid_md_file = saved_hybrid_files["hybrid_md_path"]
+
+                status += (
+                    f"\nHybrid 处理成功。\n"
+                    f"Hybrid 页数：{len(hybrid_results)}\n"
+                    f"Hybrid JSON：{hybrid_json_file}\n"
+                    f"Hybrid Markdown：{hybrid_md_file}\n"
+                )
+
+        else:
+            status += "\n未启用 Hybrid。"
+            
+        # ==================== QA 流程 ====================
+        # 修复了这里的缩进，将其移出 Hybrid 的 else 分支
+        if enable_qa:
+            if not enable_ocr:
+                status += "\nQA 未执行：当前版本要求启用 OCR-only，以便进行证据定位。"
+            elif not qa_question.strip():
+                status += "\nQA 未执行：问题为空。"
+            else:
+                from src.qa_utils import run_qa_on_pages, format_qa_markdown
+                from src.visualize import draw_evidence_items
+                from src.export_utils import save_qa_outputs
+
+                qa_results = run_qa_on_pages(
+                    question=qa_question,
+                    ocr_results=ocr_results,
+                    vlm_results=vlm_results,
+                    hybrid_results=result.get("hybrid_results",[]),
+                    max_pages=qa_max_pages,
+                )
+
+                qa_text = format_qa_markdown(qa_results)
+
+                qa_vis_dir = Path(result["run_dir"]) / "qa_visuals"
+                qa_vis_dir.mkdir(parents=True, exist_ok=True)
+
+                for qa_page in qa_results:
+                    page_index = qa_page["page_index"]
+                    image_path = qa_page["image_path"]
+                    evidence_items = qa_page["evidence_items"]
+
+                    if image_path and evidence_items:
+                        vis_path = qa_vis_dir / f"page_{page_index:03d}_qa_evidence.png"
+                        drawn_path = draw_evidence_items(
+                            image_path=image_path,
+                            evidence_items=evidence_items,
+                            output_path=vis_path,
+                        )
+                        qa_visuals.append(drawn_path)
+
+                result["qa_results"] = qa_results
+                result["qa_visuals"] = qa_visuals
+
+                saved_qa_files = save_qa_outputs(
+                    run_dir=result["run_dir"],
+                    result=result,
+                    qa_markdown=qa_text,
+                )
+
+                qa_json_file = saved_qa_files["qa_json_path"]
+                qa_md_file = saved_qa_files["qa_md_path"]
+
+                status += (
+                    f"\nQA 处理成功。\n"
+                    f"QA 页数：{len(qa_results)}\n"
+                    f"证据图数量：{len(qa_visuals)}\n"
+                    f"QA JSON：{qa_json_file}\n"
+                    f"QA Markdown：{qa_md_file}\n"
+                )
+
+        else:
+            status += "\n未启用 QA。"
+
         return (
             page_images,
             status,
@@ -162,12 +304,34 @@ def process_upload(
             vlm_text,
             vlm_json_file,
             vlm_md_file,
+            hybrid_text,
+            hybrid_json_file,
+            hybrid_md_file,
+            qa_text,
+            qa_visuals,
+            qa_json_file,
+            qa_md_file,
         )
 
     except Exception as e:
         tb = traceback.format_exc()
         error_message = f"处理失败：{repr(e)}\n\n详细堆栈：\n{tb}"
-        return [], error_message, {}, [], "", None, None, "", None, None
+        return ([],
+            error_message,
+            {},[],
+            "",
+            None,
+            None,
+            "",
+            None,
+            None,
+            "",
+            None,
+            None,
+            "",[],
+            None,
+            None,
+        )
 
 
 def build_demo() -> gr.Blocks:
@@ -176,14 +340,12 @@ def build_demo() -> gr.Blocks:
             """
             # 面向复杂文档解析的 OCR 与 VLM 协同实践
 
-            当前版本：**文档输入 + OCR-only + VLM-only**
+            当前版本：**OCR-only + VLM-only + Hybrid 初版**
 
-            功能：
-            - 上传 PDF 或图片；
-            - 将 PDF 页面渲染成 PNG；
-            - 使用 PaddleOCR 做 OCR-only；
-            - 调用视觉语言模型做 VLM-only 页面理解；
-            - 保存 OCR/VLM 的 JSON 与 Markdown 结果。
+            三条路线：
+            - OCR-only：提取文字、bbox 和置信度；
+            - VLM-only：直接看页面图，输出页面理解；
+            - Hybrid：融合 OCR 的文本/坐标与 VLM 的视觉语义，生成结构化结果。
             """
         )
 
@@ -206,7 +368,7 @@ def build_demo() -> gr.Blocks:
                 max_pages_input = gr.Slider(
                     minimum=1,
                     maximum=30,
-                    value=5,
+                    value=3,
                     step=1,
                     label="最多转成页面图的页数",
                 )
@@ -221,7 +383,7 @@ def build_demo() -> gr.Blocks:
                 ocr_max_pages_input = gr.Slider(
                     minimum=1,
                     maximum=10,
-                    value=2,
+                    value=1,
                     step=1,
                     label="最多 OCR 页数",
                 )
@@ -235,7 +397,7 @@ def build_demo() -> gr.Blocks:
                 gr.Markdown("## VLM-only 设置")
 
                 enable_vlm_input = gr.Checkbox(
-                    value=False,
+                    value=True,
                     label="启用 VLM-only 页面理解",
                 )
 
@@ -250,36 +412,68 @@ def build_demo() -> gr.Blocks:
                 vlm_prompt_input = gr.Textbox(
                     label="VLM Prompt",
                     value=DEFAULT_VLM_PROMPT,
-                    lines=10,
+                    lines=8,
+                )
+
+                gr.Markdown("## Hybrid 设置")
+
+                enable_hybrid_input = gr.Checkbox(
+                    value=True,
+                    label="启用 OCR+VLM Hybrid 融合",
+                )
+
+                hybrid_max_pages_input = gr.Slider(
+                    minimum=1,
+                    maximum=5,
+                    value=1,
+                    step=1,
+                    label="最多 Hybrid 页数",
+                )
+
+                gr.Markdown("## QA 问答设置")
+
+                enable_qa_input = gr.Checkbox(
+                    value=True,
+                    label="启用文档问答 + OCR 证据定位",
+                )
+
+                qa_question_input = gr.Textbox(
+                    label="问题",
+                    value="这页主要讲了什么？请给出证据。",
+                    lines=3,
+                )
+
+                qa_max_pages_input = gr.Slider(
+                    minimum=1,
+                    maximum=5,
+                    value=1,
+                    step=1,
+                    label="最多 QA 页数",
                 )
 
                 run_button = gr.Button("开始处理", variant="primary")
 
                 status_output = gr.Textbox(
                     label="处理状态",
-                    lines=14,
+                    lines=16,
                 )
 
                 gr.Markdown("### 下载 OCR-only 结果")
-
-                ocr_json_download = gr.File(
-                    label="下载 ocr_results.json"
-                )
-
-                ocr_md_download = gr.File(
-                    label="下载 ocr_text.md"
-                )
+                ocr_json_download = gr.File(label="下载 ocr_results.json")
+                ocr_md_download = gr.File(label="下载 ocr_text.md")
 
                 gr.Markdown("### 下载 VLM-only 结果")
+                vlm_json_download = gr.File(label="下载 vlm_results.json")
+                vlm_md_download = gr.File(label="下载 vlm_text.md")
 
-                vlm_json_download = gr.File(
-                    label="下载 vlm_results.json"
-                )
+                gr.Markdown("### 下载 Hybrid 结果")
+                hybrid_json_download = gr.File(label="下载 hybrid_results.json")
+                hybrid_md_download = gr.File(label="下载 hybrid_text.md")
 
-                vlm_md_download = gr.File(
-                    label="下载 vlm_text.md"
-                )
-
+                gr.Markdown("### 下载 QA 结果")
+                qa_json_download = gr.File(label="下载 qa_results.json")
+                qa_md_download = gr.File(label="下载 qa_text.md")
+           
             with gr.Column(scale=2):
                 with gr.Tab("页面预览"):
                     gallery_output = gr.Gallery(
@@ -298,19 +492,26 @@ def build_demo() -> gr.Blocks:
                     )
 
                 with gr.Tab("OCR 文本"):
-                    ocr_text_output = gr.Markdown(
-                        label="OCR 文本结果"
-                    )
+                    ocr_text_output = gr.Markdown(label="OCR 文本结果")
 
                 with gr.Tab("VLM 文本"):
-                    vlm_text_output = gr.Markdown(
-                        label="VLM 页面理解结果"
-                    )
+                    vlm_text_output = gr.Markdown(label="VLM 页面理解结果")
 
-                with gr.Tab("JSON"):
-                    json_output = gr.JSON(
-                        label="处理结果 JSON",
+                with gr.Tab("Hybrid 文本"):
+                    hybrid_text_output = gr.Markdown(label="Hybrid 混合解析结果")
+                
+                with gr.Tab("QA 问答"):
+                    qa_text_output = gr.Markdown(label="QA 问答结果")
+
+                with gr.Tab("QA 证据高亮"):
+                    qa_gallery_output = gr.Gallery(
+                        label="QA 证据区域",
+                        columns=2,
+                        height=500,
+                        object_fit="contain",
                     )
+                with gr.Tab("JSON"):
+                    json_output = gr.JSON(label="处理结果 JSON")
 
         run_button.click(
             fn=process_upload,
@@ -324,6 +525,11 @@ def build_demo() -> gr.Blocks:
                 enable_vlm_input,
                 vlm_max_pages_input,
                 vlm_prompt_input,
+                enable_hybrid_input,
+                hybrid_max_pages_input,
+                enable_qa_input,
+                qa_question_input,
+                qa_max_pages_input,
             ],
             outputs=[
                 gallery_output,
@@ -336,6 +542,13 @@ def build_demo() -> gr.Blocks:
                 vlm_text_output,
                 vlm_json_download,
                 vlm_md_download,
+                hybrid_text_output,
+                hybrid_json_download,
+                hybrid_md_download,
+                qa_text_output,
+                qa_gallery_output,
+                qa_json_download,
+                qa_md_download,
             ],
         )
 
