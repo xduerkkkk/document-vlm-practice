@@ -31,5 +31,6 @@ models/
 # FUNSD raw dataset and generated files
 data/funsd_raw/
 funsd_experiment/data/processed/
-funsd_experiment/outputs/checkpoints/
-funsd_experiment/outputs/predictions/
+funsd_experiment/data/prepared/
+funsd_experiment/outputs/
+funsd_experiment/report/
