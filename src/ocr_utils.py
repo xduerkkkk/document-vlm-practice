@@ -28,20 +28,13 @@ def get_paddle_ocr_engine(
     """
     PaddleOCR 3.5.0 版本 OCR 引擎。
 
-    优先使用项目目录下的本地模型：
-        models/paddleocr/PP-OCRv5_mobile_det
-        models/paddleocr/PP-OCRv5_mobile_rec
-
-    如果本地模型不存在，则回退到 PaddleOCR 官方模型名，
-    PaddleOCR 会使用默认缓存目录或自动下载。
+    当前稳定策略：
+    - 使用 PaddleOCR 官方模型名；
+    - 不手动指定本地 model_dir；
+    - 让 PaddleOCR 使用默认 .paddlex 缓存；
+    - 关闭 MKLDNN/OneDNN，避免 Windows CPU 推理兼容问题。
     """
     from paddleocr import PaddleOCR
-
-    project_root = Path(__file__).resolve().parents[1]
-    model_root = project_root / "models" / "paddleocr"
-
-    det_model_dir = model_root / "PP-OCRv5_mobile_det"
-    rec_model_dir = model_root / "PP-OCRv5_mobile_rec"
 
     common_kwargs = dict(
         lang=lang,
@@ -61,14 +54,6 @@ def get_paddle_ocr_engine(
                 text_recognition_model_name="PP-OCRv5_mobile_rec",
             )
         )
-
-        if det_model_dir.exists() and rec_model_dir.exists():
-            common_kwargs.update(
-                dict(
-                    text_detection_model_dir=str(det_model_dir),
-                    text_recognition_model_dir=str(rec_model_dir),
-                )
-            )
 
     return PaddleOCR(**common_kwargs)
 

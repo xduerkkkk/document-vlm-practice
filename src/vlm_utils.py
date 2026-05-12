@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 
 DEFAULT_VLM_PROMPT = """
-请你阅读这页文档图片，并完成页面理解。
+请你阅读这页文档图片，并完成页面理解。 
 
 请输出以下内容：
 
