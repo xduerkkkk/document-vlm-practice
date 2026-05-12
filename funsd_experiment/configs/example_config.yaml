@@ -1,0 +1,31 @@
+# FUNSD Experiment Configuration Example
+
+# 模型配置
+model:
+  name: "microsoft/layoutlmv3-base"  # 预训练模型名称
+  num_labels: 5                       # BIO 标签数 (B-question, I-question, B-answer, I-answer, O)
+  hidden_dropout_prob: 0.1
+
+# 数据配置
+data:
+  dataset_path: "./data/funsd"        # FUNSD 数据集路径
+  max_seq_length: 512                 # 最大序列长度
+  image_size: [224, 224]              # 输入图像尺寸
+  train_batch_size: 4
+  eval_batch_size: 8
+
+# 训练配置
+training:
+  num_epochs: 100
+  learning_rate: 5.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  early_stopping_patience: 10
+  fp16: true
+  output_dir: "./outputs/funsd"
+
+# 推理配置
+inference:
+  checkpoint: null                    # 模型权重路径
+  device: "cuda"
+  confidence_threshold: 0.5
