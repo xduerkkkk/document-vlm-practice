@@ -33,4 +33,6 @@ data/funsd_raw/
 funsd_experiment/data/processed/
 funsd_experiment/data/prepared/
 funsd_experiment/outputs/
-funsd_experiment/report/
+funsd_experiment/report/*
+!funsd_experiment/report/tables/
+!funsd_experiment/report/experiment_log.md
