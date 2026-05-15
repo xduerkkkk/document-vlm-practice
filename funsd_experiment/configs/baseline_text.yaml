@@ -1,0 +1,25 @@
+# Text-Only Baseline Configuration for FUNSD Field Extraction
+#
+# This config reproduces the default training run described in Phase 3.
+# Run with:
+#   python src/train/train_text_only.py --config configs/baseline_text.yaml
+# (or use the defaults baked into train_text_only.py, which match this file).
+
+# Model
+model_name: "distilbert-base-uncased"
+
+# Data
+data_dir: "funsd_experiment/data/prepared"
+max_length: 512
+
+# Training
+epochs: 5
+batch_size: 4
+learning_rate: 5.0e-5
+seed: 42
+
+# Output
+output_dir: "funsd_experiment/outputs/checkpoints/text_only"
+prediction_dir: "funsd_experiment/outputs/predictions"
+metric_dir: "funsd_experiment/outputs/metrics"
+report_table: "funsd_experiment/report/tables/text_only_metrics.md"
