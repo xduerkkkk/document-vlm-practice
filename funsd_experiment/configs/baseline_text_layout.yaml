@@ -1,0 +1,25 @@
+# Text + Layout Baseline Configuration for FUNSD Field Extraction
+#
+# This config reproduces the default training run described in Phase 4.
+# Run with:
+#   python src/train/train_text_layout.py
+
+# Model
+model_name: "distilbert-base-uncased"
+bbox_hidden_size: 128
+
+# Data
+data_dir: "funsd_experiment/data/prepared"
+max_length: 512
+
+# Training
+epochs: 5
+batch_size: 4
+learning_rate: 5.0e-5
+seed: 42
+
+# Output
+output_dir: "funsd_experiment/outputs/checkpoints/text_layout"
+prediction_dir: "funsd_experiment/outputs/predictions"
+metric_dir: "funsd_experiment/outputs/metrics"
+report_table: "funsd_experiment/report/tables/text_layout_metrics.md"
